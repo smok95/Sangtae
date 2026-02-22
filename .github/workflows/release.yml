@@ -1,0 +1,55 @@
+name: Release Sangtae
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Python dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        pip3 install Pillow
+
+    - name: Generate App Icon
+      run: |
+        python3 generate_icon.py
+        chmod +x make_icon.sh
+        ./make_icon.sh
+        ls -la AppIcon.icns || echo "AppIcon.icns generation failed."
+
+    - name: Build Application
+      run: |
+        chmod +x build_app.sh
+        ./build_app.sh
+        ls -d Sangtae.app || echo "Sangtae.app build failed."
+
+    - name: Create DMG
+      run: |
+        mkdir Dist
+        cp -R Sangtae.app Dist/
+        # Create a link to Applications folder
+        ln -s /Applications Dist/Applications
+        hdiutil create -volname Sangtae -srcfolder Dist -ov -format UDZO Sangtae.dmg
+        ls -la Sangtae.dmg
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Sangtae.dmg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
