@@ -46,3 +46,15 @@ Requirements:
    ```
 
 4. The app will be located in the current directory as `Sangtae.app`.
+
+## Troubleshooting
+
+### "Sangtae.app is damaged and can't be opened"
+Since this app is not signed with a paid Apple Developer ID, macOS Gatekeeper may block it when downloaded from the internet. To fix this:
+
+1. Move the app to your `/Applications` folder.
+2. Open Terminal and run:
+   ```bash
+   xattr -cr /Applications/Sangtae.app
+   ```
+3. Launch the app again.
