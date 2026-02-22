@@ -84,14 +84,14 @@ class SystemMonitor: ObservableObject {
         isUpdating = true
         
         updateQueue.async {
-            defer { self.isUpdating = false }
+            // Defer removed from here to prevent data race on isUpdating
             
             let now = Date()
             let timeInterval = now.timeIntervalSince(self.lastUpdate)
             self.lastUpdate = now
             
             // Core metrics - always update
-            let cpu = self.getRealCPU()
+            let cpuInfo = self.getRealCPU()
             let cores = self.getRealCores()
             let mem = self.getRealMemory()
             let net = self.getRealNetwork(interval: timeInterval)
@@ -115,7 +115,8 @@ class SystemMonitor: ObservableObject {
             self.updateCounter = (self.updateCounter + 1) % 1000
             
             DispatchQueue.main.async {
-                self.cpuTotal = cpu
+                self.cpuTotal = cpuInfo.total
+                self.loadAvg = cpuInfo.load
                 self.coreUsages = cores
                 self.memUsedRatio = mem.ratio
                 self.memUsedGB = mem.used
@@ -130,6 +131,8 @@ class SystemMonitor: ObservableObject {
                     self.isCharging = b.charging
                 }
                 if let d = diskInfo { self.disks = d }
+                
+                self.isUpdating = false // Safe: Updated on Main Thread
             }
         }
     }
@@ -175,10 +178,10 @@ class SystemMonitor: ObservableObject {
         return (-1.0, false)
     }
 
-    private func getRealCPU() -> Double {
+    private func getRealCPU() -> (total: Double, load: [Double]) {
         var load = [Double](repeating: 0.0, count: 3)
         getloadavg(&load, 3)
-        self.loadAvg = load
+        // self.loadAvg = load  <-- REMOVED: Caused crash by updating on BG thread
         
         var size = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         var info = host_cpu_load_info()
@@ -195,7 +198,9 @@ class SystemMonitor: ObservableObject {
         previousCPU = info
         
         let total = user + sys + idle + nice
-        return total == 0 ? 0 : (user + sys + nice) / total
+        let totalUsage = total == 0 ? 0 : (user + sys + nice) / total
+        
+        return (totalUsage, load)
     }
 
     private func getRealCores() -> [(name: String, value: Double)] {
@@ -291,8 +296,20 @@ class SystemMonitor: ObservableObject {
         }
         freeifaddrs(ifaddr)
         
-        let down = prevNetBytesIn > 0 ? Double(currIn - prevNetBytesIn) / 1024 / 1024 / interval : 0
-        let up = prevNetBytesOut > 0 ? Double(currOut - prevNetBytesOut) / 1024 / 1024 / interval : 0
+        // Fix Arithmetic Overflow Crash:
+        // If interface counters reset or roll over, currIn might be less than prevNetBytesIn.
+        // We must ensure we don't subtract a larger number from a smaller one on UInt64.
+        
+        var down: Double = 0.0
+        var up: Double = 0.0
+        
+        if prevNetBytesIn > 0 && currIn >= prevNetBytesIn {
+             down = Double(currIn - prevNetBytesIn) / 1024 / 1024 / interval
+        }
+        
+        if prevNetBytesOut > 0 && currOut >= prevNetBytesOut {
+             up = Double(currOut - prevNetBytesOut) / 1024 / 1024 / interval
+        }
         
         prevNetBytesIn = currIn
         prevNetBytesOut = currOut
