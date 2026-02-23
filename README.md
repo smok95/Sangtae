@@ -16,6 +16,14 @@ A lightweight, native macOS system monitor that lives in your menu bar.
 
 ## Installation
 
+### Method 1: Homebrew (Recommended)
+This is the easiest way to install and keep the app updated.
+```bash
+brew tap smok95/sangtae
+brew install --cask sangtae
+```
+
+### Method 2: Manual Download
 Download the latest `.dmg` from the [Releases](https://github.com/smok95/Sangtae/releases) page.
 
 ## Building from Source
